@@ -1,0 +1,653 @@
+openapi: 3.0.3
+info:
+  title: Athena Blockchain API
+  version: 1.0.0
+  description: |
+    HTTP API in front of a Hyperledger Fabric network. It has two groups of endpoints:
+
+    - **Fabric CA** (`/fabricCA/*`): register and enroll identities with the organization's
+      Fabric CA. Enrollment stores the identity's certificate and private key in the server
+      keystore, encrypted with the identity's secret.
+    - **Fabric client** (`/client/*`): open a Fabric Gateway connection as an enrolled identity,
+      then submit (invoke) or evaluate (query) chaincode transactions.
+
+    ### Typical flow
+
+    1. `POST /fabricCA/register`: a registrar registers a new identity.
+    2. `POST /fabricCA/enroll`: the new identity enrolls; its credentials go to the keystore.
+    3. `POST /client/`: open a gateway connection for that identity. The response sets the
+       `fabric-session` cookie.
+    4. `POST /client/invoke` and `GET /client/query`: send the cookie with each call.
+    5. `GET /client/close`: close the connection.
+
+    `/fabricCA/*` endpoints return JSON on success. `/client/*` endpoints return plain text.
+    All errors are plain text.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+servers:
+  - url: http://localhost:3000
+    description: Local or Docker Compose deployment
+tags:
+  - name: Fabric CA
+    description: Identity registration and enrollment with the Fabric CA.
+  - name: Fabric client
+    description: Gateway connections and chaincode transactions.
+
+paths:
+  /fabricCA/register:
+    post:
+      tags: [Fabric CA]
+      operationId: registerIdentity
+      security: []
+      summary: Register an identity with the Fabric CA and the TLS CA
+      description: |
+        Registers `userRegistrationId` with the organization's Fabric CA. The request is signed
+        with the registrar in `adminIdentity`, whose certificate and private key must already be
+        in the server keystore. The same registration is then sent to the TLS CA, signed with the
+        TLS CA admin configured on the server (`TLSCA_ADMIN`). Both registrations must succeed.
+
+        If `userSecret` is omitted, the CA generates one and returns it in
+        `result.CA.result.secret`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+            example:
+              adminIdentity:
+                enrollmentId: registrar0
+                secret: registrar-secret
+              userRegistrationId: user1
+              userSecret: user1-secret
+              type: client
+              affiliation: ''
+              attrs:
+                - name: department
+                  value: research
+      responses:
+        '200':
+          description: Identity registered with both CAs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'
+        '400':
+          description: The body is not valid JSON, or `userRegistrationId` or `adminIdentity` is missing.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: registrationId and admin credentials are required
+        '500':
+          description: |
+            The registrar's credentials could not be loaded from the keystore, a CA could not
+            be reached, or a CA response could not be parsed.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: 'Failed to create registration request: Failed to retrieve admin credentials: ...'
+        default:
+          description: |
+            A CA rejected the registration. The CA's status code is passed through, and the
+            body starts with `Registration failed:` or `TLS Registration failed:` followed by
+            the CA's error.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+
+  /fabricCA/enroll:
+    post:
+      tags: [Fabric CA]
+      operationId: enrollIdentity
+      security: []
+      summary: Enroll an identity and store its credentials in the keystore
+      description: |
+        Generates an ECDSA P-256 key pair and a CSR on the server from `csrInfo`, then enrolls
+        with the Fabric CA using `enrollmentId` and `secret`. The issued certificate, the private
+        key and the organization's TLS root certificate are stored in the keystore, encrypted
+        with `secret`. The private key is never returned.
+
+        Storing in the keystore is best-effort: if it fails, the server logs a warning and still
+        returns 200.
+
+        TLS CA enrollment is not implemented yet, so `TLSCAEnrollResp` is always an empty string.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnrollmentRequest'
+            example:
+              enrollmentId: user1
+              secret: user1-secret
+              csrInfo:
+                cn: user1
+                names:
+                  - C: GR
+                    ST: Attica
+                    L: Athens
+                    O: bsc
+                    OU: client
+                hosts:
+                  - localhost
+                  - user1.bsc.dt4h.com
+      responses:
+        '200':
+          description: Identity enrolled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnrollmentResponse'
+        '400':
+          description: The body is not valid JSON, or `enrollmentId` or `secret` is missing.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: enrollmentId and secret are required
+        '500':
+          description: |
+            CSR generation failed, the CA could not be reached, or the CA rejected the
+            enrollment (for example a wrong secret). The CA's error is included in the body.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: 'Failed to enroll to CA: enrollment failed: ...'
+
+  /fabricCA/info:
+    post:
+      tags: [Fabric CA]
+      operationId: getCAInfo
+      security: []
+      summary: Get Fabric CA information
+      description: |
+        Returns the Fabric CA's `cainfo` response for the CA configured on the server
+        (`FABRIC_CA_NAME`). Takes no request body.
+      responses:
+        '200':
+          description: CA information.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FabricCAInfoResponse'
+        '500':
+          description: The CA could not be reached or its response could not be parsed.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: Failed to connect to CA server
+        default:
+          description: |
+            The CA returned an error. Its status code is passed through and the body is
+            `CA server error:` followed by the CA's response.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+
+  /client/:
+    post:
+      tags: [Fabric client]
+      operationId: openGateway
+      security: []
+      summary: Open a Fabric Gateway connection
+      description: |
+        Loads the identity's certificate and private key from the keystore, decrypting them with
+        `secret`, and connects to the organization's gateway peer. The connection is kept on the
+        server and tied to the `fabric-session` cookie set in the response. Send that cookie with
+        every other `/client/*` call.
+
+        The identity must already be in the keystore, either through `POST /fabricCA/enroll` or
+        preloaded at server startup.
+
+        The path needs the trailing slash: `/client` without it returns 404.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GatewayRequest'
+            example:
+              enrollmentId: user1
+              secret: user1-secret
+      responses:
+        '200':
+          description: Connection opened.
+          headers:
+            Set-Cookie:
+              description: The `fabric-session` cookie (HttpOnly, path `/`, expires when the browser session ends).
+              schema:
+                type: string
+              example: fabric-session=MTc1ODc5...; Path=/; HttpOnly
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Fabric client connection initialized successfully.
+        '400':
+          description: The body is not valid JSON.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: 'Invalid OrgSetup: ...'
+        '500':
+          description: |
+            The connection could not be opened, for example because the identity is not in the
+            keystore or the secret is wrong.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: 'Error initializing org: failed to create identity: ...'
+
+  /client/invoke:
+    post:
+      tags: [Fabric client]
+      operationId: invokeTransaction
+      summary: Submit a chaincode transaction
+      description: |
+        Endorses the transaction and submits it to the orderer, then returns without waiting for
+        the commit. A 200 response therefore does not guarantee the transaction is valid: it can
+        still be rejected at validation, for example with `MVCC_READ_CONFLICT`. Wait for the
+        commit before sending a transaction that reads what this one writes.
+
+        To call a function outside the chaincode's default contract, prefix it with the contract
+        name: `<Contract>:<Function>`.
+      security:
+        - fabricSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+            example:
+              channelid: dt4h
+              chaincodeid: dt4hCC
+              function: LogQuery
+              args:
+                - test-dataset
+                - select metadata from test-dataset where age>50
+                - '0.5'
+      responses:
+        '200':
+          description: |
+            Transaction endorsed and submitted. The body contains the transaction ID and the
+            chaincode's return value.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'Transaction ID : 0c2e6f8a4d1b3e5f7a9c0b2d4e6f8a1c3e5b7d9f0a2c4e6b8d0f1a3c5e7b9d2f Response: '
+        '400':
+          description: |
+            No open connection for this session, the body is not valid JSON, or the proposal,
+            endorsement or submission failed. Chaincode errors are reported here.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: Fabric client not initialized for this session. Call /client/ first.
+
+  /client/query:
+    get:
+      tags: [Fabric client]
+      operationId: queryChaincode
+      summary: Evaluate a chaincode transaction (read-only)
+      description: |
+        Evaluates the function on the gateway peer without submitting it, so nothing is written
+        to the ledger.
+
+        The server currently sends the non-standard header `Content-Type: plain/text` on success.
+      security:
+        - fabricSession: []
+      parameters:
+        - name: channelid
+          in: query
+          required: true
+          description: Channel name.
+          schema:
+            type: string
+          example: dt4h
+        - name: chaincodeid
+          in: query
+          required: true
+          description: Chaincode name.
+          schema:
+            type: string
+          example: dt4hCC
+        - name: function
+          in: query
+          required: true
+          description: Function to evaluate. Prefix with `<Contract>:` for a non-default contract.
+          schema:
+            type: string
+          example: GetMyHistory
+        - name: args
+          in: query
+          required: false
+          description: Function arguments, passed as strings in the order given. Repeat the parameter once per argument.
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: The chaincode's return value, prefixed with `Query response:`.
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'Query response: <value returned by the chaincode>'
+        '400':
+          description: |
+            A required parameter is missing, there is no open connection for this session, or
+            the chaincode returned an error.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: 'Query error from blockchain: ...'
+
+  /client/close:
+    get:
+      tags: [Fabric client]
+      operationId: closeGateway
+      summary: Close the Fabric Gateway connection
+      description: Closes the connection for this session and expires the `fabric-session` cookie.
+      security:
+        - fabricSession: []
+      responses:
+        '200':
+          description: Connection closed.
+          headers:
+            Set-Cookie:
+              description: Expires the `fabric-session` cookie.
+              schema:
+                type: string
+              example: fabric-session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT; Max-Age=0
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Fabric client connection closed successfully.
+        '400':
+          description: No open connection for this session.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: No active Fabric client connection for this session.
+        '500':
+          description: The connection could not be closed.
+          content:
+            text/plain:
+              schema:
+                $ref: '#/components/schemas/PlainTextError'
+              example: 'Error closing Fabric client connection: ...'
+
+components:
+  securitySchemes:
+    fabricSession:
+      type: apiKey
+      in: cookie
+      name: fabric-session
+      description: Session cookie set by `POST /client/`. It is signed and encrypted by the server.
+
+  schemas:
+    PlainTextError:
+      type: string
+      description: Human-readable error message.
+
+    AdminIdentity:
+      type: object
+      description: |
+        Registrar identity. Its certificate and private key must be in the server keystore;
+        `secret` decrypts them.
+      required: [enrollmentId, secret]
+      properties:
+        enrollmentId:
+          type: string
+          example: registrar0
+        secret:
+          type: string
+          format: password
+
+    Attribute:
+      type: object
+      required: [name, value]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+
+    RegistrationRequest:
+      type: object
+      required: [adminIdentity, userRegistrationId]
+      properties:
+        adminIdentity:
+          $ref: '#/components/schemas/AdminIdentity'
+        userRegistrationId:
+          type: string
+          description: Enrollment ID of the new identity.
+        userSecret:
+          type: string
+          format: password
+          description: Secret of the new identity. If omitted, the CA generates one.
+        type:
+          type: string
+          description: Identity type, for example `client`, `peer`, `orderer` or `admin`.
+          example: client
+        affiliation:
+          type: string
+          description: Affiliation of the new identity. If empty, the CA uses the registrar's affiliation.
+        attrs:
+          type: array
+          description: Attributes added to the identity.
+          items:
+            $ref: '#/components/schemas/Attribute'
+
+    RegistrationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Identity registered successfully
+        result:
+          type: object
+          properties:
+            CA:
+              $ref: '#/components/schemas/FabricCARegisterResponse'
+            TLS:
+              $ref: '#/components/schemas/FabricCARegisterResponse'
+
+    CSRName:
+      type: object
+      description: Certificate subject fields.
+      properties:
+        C:
+          type: string
+          description: Country.
+        ST:
+          type: string
+          description: State or province.
+        L:
+          type: string
+          description: Locality.
+        O:
+          type: string
+          description: Organization.
+        OU:
+          type: string
+          description: Organizational unit.
+
+    CSRInfo:
+      type: object
+      required: [cn]
+      properties:
+        cn:
+          type: string
+          description: Certificate common name. Without it no CSR is generated and enrollment fails.
+        names:
+          type: array
+          items:
+            $ref: '#/components/schemas/CSRName'
+        hosts:
+          type: array
+          description: DNS names for the certificate's Subject Alternative Name.
+          items:
+            type: string
+
+    EnrollmentRequest:
+      type: object
+      required: [enrollmentId, secret, csrInfo]
+      properties:
+        enrollmentId:
+          type: string
+        secret:
+          type: string
+          format: password
+          description: Enrollment secret. Also used to encrypt the identity in the keystore.
+        profile:
+          type: string
+          description: Accepted but currently ignored.
+        csrInfo:
+          $ref: '#/components/schemas/CSRInfo'
+
+    EnrollmentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        CAEnrollResp:
+          $ref: '#/components/schemas/FabricCAEnrollResponse'
+        TLSCAEnrollResp:
+          type: string
+          description: Always empty. TLS CA enrollment is not implemented yet.
+          example: ''
+
+    GatewayRequest:
+      type: object
+      required: [enrollmentId, secret]
+      properties:
+        enrollmentId:
+          type: string
+          description: Enrollment ID of an identity in the keystore.
+        secret:
+          type: string
+          format: password
+          description: The identity's secret, used to decrypt it in the keystore.
+
+    TransactionRequest:
+      type: object
+      required: [channelid, chaincodeid, function]
+      properties:
+        channelid:
+          type: string
+          description: Channel name.
+        chaincodeid:
+          type: string
+          description: Chaincode name.
+        function:
+          type: string
+          description: Function to call. Prefix with `<Contract>:` for a non-default contract.
+        args:
+          type: array
+          description: Function arguments, all passed as strings.
+          items:
+            type: string
+
+    FabricCAMessage:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+
+    FabricCAEnvelope:
+      type: object
+      description: Response envelope used by the Fabric CA REST API, returned here unchanged.
+      properties:
+        success:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/FabricCAMessage'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/FabricCAMessage'
+
+    CAInfo:
+      type: object
+      properties:
+        CAName:
+          type: string
+          example: ca-bsc
+        CAChain:
+          type: string
+          format: byte
+          description: Base64-encoded PEM certificate chain of the CA.
+        IssuerPublicKey:
+          type: string
+          format: byte
+          description: Base64-encoded Idemix issuer public key.
+        IssuerRevocationPublicKey:
+          type: string
+          format: byte
+          description: Base64-encoded Idemix issuer revocation public key.
+        Version:
+          type: string
+          description: Fabric CA server version.
+
+    FabricCARegisterResponse:
+      allOf:
+        - $ref: '#/components/schemas/FabricCAEnvelope'
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                secret:
+                  type: string
+                  format: password
+                  description: The new identity's secret, as given or generated by the CA.
+
+    FabricCAEnrollResponse:
+      allOf:
+        - $ref: '#/components/schemas/FabricCAEnvelope'
+        - type: object
+          properties:
+            result:
+              type: object
+              properties:
+                Cert:
+                  type: string
+                  format: byte
+                  description: Base64-encoded PEM of the issued certificate.
+                ServerInfo:
+                  $ref: '#/components/schemas/CAInfo'
+
+    FabricCAInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/FabricCAEnvelope'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/CAInfo'
