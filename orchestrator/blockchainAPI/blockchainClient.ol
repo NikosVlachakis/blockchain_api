@@ -10,7 +10,7 @@ type TransactionRequest {
     chaincodeid: string
     channelid: string 
     function: string
-    args[1, *]: string
+    args[0, *]: string
 }
 
 type ExecuteTransaction {

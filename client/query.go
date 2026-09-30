@@ -19,7 +19,7 @@ func QueryWithBody(w http.ResponseWriter, reqBody RequestBody, gateway *client.G
 	contract := network.GetContract(chainCodeName)
 	evaluateResponse, err := contract.EvaluateTransaction(function, args...)
 	if err != nil {
-		http.Error(w, "Query error from blockchain: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, formatGatewayError("Query error from blockchain", err), http.StatusBadRequest)
 		return
 	}
 	fmt.Fprintf(w, "Query response: %s", evaluateResponse)

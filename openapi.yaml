@@ -253,10 +253,14 @@ paths:
       operationId: invokeTransaction
       summary: Submit a chaincode transaction
       description: |
-        Endorses the transaction and submits it to the orderer, then returns without waiting for
-        the commit. A 200 response therefore does not guarantee the transaction is valid: it can
-        still be rejected at validation, for example with `MVCC_READ_CONFLICT`. Wait for the
-        commit before sending a transaction that reads what this one writes.
+        Endorses the transaction, submits it to the orderer, and waits for commit status before
+        returning. A 200 response means the transaction committed successfully. Validation
+        failures such as `MVCC_READ_CONFLICT` are returned as errors (the client retries a few
+        times on MVCC before failing). Gateway/chaincode ErrorDetail messages are included in
+        the error body when available.
+
+        `LogQuery` takes two arguments only: `datasetID` and `queryBody`. The ε cost is configured
+        on-chain by an admin via `PrivacyBudgetContract:SetDatasetQueryCost`.
 
         To call a function outside the chaincode's default contract, prefix it with the contract
         name: `<Contract>:<Function>`.
@@ -275,7 +279,6 @@ paths:
               args:
                 - test-dataset
                 - select metadata from test-dataset where age>50
-                - '0.5'
       responses:
         '200':
           description: |

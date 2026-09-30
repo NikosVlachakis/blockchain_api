@@ -68,8 +68,8 @@ func TestInvokeHandlerAfterInit(t *testing.T) {
 		t.Fatalf("Initialization failed, got %d", initRec.Code)
 	}
 
-	// Prepare invoke request body (example from curls.txt)
-	invokeBody := []byte(`{"chaincodeid":"dt4hCC","channelid":"dt4h","function":"LogQuery","args":["select metadata from test-dataset"]}`)
+	// Prepare invoke request body (2-arg LogQuery: datasetID, queryBody)
+	invokeBody := []byte(`{"chaincodeid":"dt4hCC","channelid":"dt4h","function":"LogQuery","args":["test-dataset","select metadata from test-dataset"]}`)
 	invokeReq := httptest.NewRequest("POST", "/client/invoke", bytes.NewReader(invokeBody))
 	invokeRec := httptest.NewRecorder()
 	client.InvokeHandler(invokeRec, invokeReq)
@@ -90,7 +90,7 @@ func TestQueryHandlerAfterInit(t *testing.T) {
 	}
 
 	// Prepare query request as GET with query parameters
-	queryReq := httptest.NewRequest("GET", "/client/query?chaincodeid=dt4hCC&channelid=dt4h&function=GetUserHistory&args=blockclient", nil)
+	queryReq := httptest.NewRequest("GET", "/client/query?chaincodeid=dt4hCC&channelid=dt4h&function=GetMyHistory", nil)
 	queryRec := httptest.NewRecorder()
 	client.QueryHandler(queryRec, queryReq)
 	if queryRec.Code != http.StatusOK {

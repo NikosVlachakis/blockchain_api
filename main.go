@@ -297,6 +297,12 @@ func RegisterBSCUser(username, secret string) error {
 	log.Printf("✓ Identity files saved to: %s", userIdentityPath)
 	log.Printf("✓ User %s is ready to use in BSC organization", username)
 
+	// EnrollHandler already provisions on the enroll HTTP path; call again for
+	// the case where enroll was handled elsewhere or auto-provision was skipped.
+	if err := clientapi.ProvisionPrivacyBudget(username, secret); err != nil {
+		return fmt.Errorf("privacy budget provisioning for %s: %w", username, err)
+	}
+
 	return nil
 }
 
@@ -417,6 +423,10 @@ func loadExistingIdentity(username, secret, keystoreDir, signcertsDir, tlscacert
 
 	log.Printf("✓ Successfully loaded existing identity for user %s from identities folder", username)
 	log.Printf("✓ User %s is ready to use in BSC organization", username)
+
+	if err := clientapi.ProvisionPrivacyBudget(username, secret); err != nil {
+		return fmt.Errorf("privacy budget provisioning for %s: %w", username, err)
+	}
 	return nil
 }
 

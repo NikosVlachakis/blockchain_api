@@ -1,6 +1,7 @@
 package caapi
 
 import (
+	"blockchain-api/client"
 	"blockchain-api/keystore"
 	"bytes"
 	"crypto/ecdsa"
@@ -180,6 +181,12 @@ func EnrollHandler(w http.ResponseWriter, r *http.Request) {
 		// Don't fail the request, just log the warning
 	} else {
 		log.Printf("Successfully stored enrollment result for %s in keystore", req.EnrollmentID)
+	}
+
+	if err := client.ProvisionPrivacyBudget(req.EnrollmentID, req.Secret); err != nil {
+		log.Printf("Failed to provision privacy budget for %s: %v", req.EnrollmentID, err)
+		http.Error(w, "Enrollment succeeded but privacy budget provisioning failed: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")

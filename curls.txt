@@ -1,13 +1,27 @@
-curl http://localhost:3000/client/ -H "Content-Type: application/json" -d '{"orgName": "Bsc","mspId": "BscMSP","cryptoPath": "../fabric/identities/blockClient/msp","certPath": "../fabric/identities/blockClient/msp/signcerts/cert.pem","keyPath": "../fabric/identities/blockClient/msp/keystore","tlsCertPath": "../fabric/identities/blockClient/msp/tlscacerts/cert.pem","peerEndpoint": "dns:///localhost:9051","gatewayPeer": "peer0.bsc.dt4h.com"}'
+# Open a gateway session (enrollmentId + keystore secret for that identity)
+curl -c /tmp/fabric-cookies.txt http://localhost:3000/client/ \
+  -H "Content-Type: application/json" \
+  -d '{"enrollmentId":"blockclient","secret":"blockclientpw"}'
 
-curl  http://localhost:3000/client/invoke -H "Content-Type: application/json" -d '{"channelid": "dt4h", "chaincodeid": "dt4hCC", "function": "LogQuery", "args": ["select metadata from test-dataset"]}'
+# WhoAmI — returns MSP/enrollmentId (e.g. BscMSP/blockclient)
+curl -b /tmp/fabric-cookies.txt \
+  "http://localhost:3000/client/query?channelid=dt4h&chaincodeid=dt4hCC&function=PrivacyBudgetContract:WhoAmI"
 
-curl "http://localhost:3000/client/query?channelid=dt4h&chaincodeid=dt4hCC&function=GetUserHistory&args=blockclient" -H "Accept: application/json"
+# LogQuery — 2 args only: datasetID, queryBody (ε comes from SetDatasetQueryCost)
+curl -b /tmp/fabric-cookies.txt http://localhost:3000/client/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"channelid":"dt4h","chaincodeid":"dt4hCC","function":"LogQuery","args":["test-dataset","select metadata from test-dataset"]}'
 
-curl "https://blockchain1.imsi.athenarc.gr:7000/executeTransaction" -H "Content-Type: application/json" -d '{ "accessToken": "", "transaction": { "type": "invoke", "transaction": {"chaincodeid": "dt4hCC", "channelid": "dt4h", "function": "LogQuery", "args": ["select metadata from test-dataset where age>50"]}}}'
+# Own history (empty users return {"queries":[]})
+curl -b /tmp/fabric-cookies.txt \
+  "http://localhost:3000/client/query?channelid=dt4h&chaincodeid=dt4hCC&function=GetMyHistory"
 
-curl "https://localhost:7000/executeTransaction" -H "Content-Type: application/json" -d '{ "accessToken": "" 
-"transaction": { "type": "query", "transaction": {"chaincodeid": "dt4hCC", "channelid": "dt4h", "function": "GetUserHistory", "args": ["kkech@athenarc.gr"]}}}'
+# Orchestrator: LogQuery with datasetID + queryBody
+curl "https://blockchain1.imsi.athenarc.gr:7000/executeTransaction" \
+  -H "Content-Type: application/json" \
+  -d '{"accessToken":"","transaction":{"type":"invoke","transaction":{"chaincodeid":"dt4hCC","channelid":"dt4h","function":"LogQuery","args":["test-dataset","select metadata from test-dataset where age>50"]}}}'
 
-curl -v "https://blockchain1.imsi.athenarc.gr:7000/executeTransaction" -H "Content-Type: application/json" -d '{ "accessToken": "eyJhbGciOiJFZERTQSIsInR5cCIgOiAiSldUIiwia2lkIiA6ICItOU9YSFRmcUlNOGZ0OTE0cy1MUXZxUlByWU9UTVk4MkJsSVc1NXdmYmljIn0.eyJleHAiOjE3NzAyMTMzODgsImlhdCI6MTc3MDIxMTU4OCwianRpIjoiNzQxYWY2ZDMtYzVlOC00MjliLTllYTMtNTYyOWJlZDllMzFjIiwiaXNzIjoiaHR0cHM6Ly9pbmIuYnNjLmVzL2F1dGgvcmVhbG1zL2RhdGF0b29sczRoZWFydCIsImF1ZCI6WyJkdDRoLWNhIiwiYWNjb3VudCJdLCJzdWIiOiIwNDIzYTVmMy0zYWE2LTQ5YTgtYWJkZi00ODVlMjNkODA4YmMiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJkdDRoLWNhIiwic2lkIjoiMWU5ZDk2ZmUtZTQ0My00ZDQzLWI1YTAtYThhNjJkYjU1YTI2IiwiYWNyIjoiMSIsImFsbG93ZWQtb3JpZ2lucyI6WyIvKiJdLCJyZXNvdXJjZV9hY2Nlc3MiOnsiYWNjb3VudCI6eyJyb2xlcyI6WyJtYW5hZ2UtYWNjb3VudCIsIm1hbmFnZS1hY2NvdW50LWxpbmtzIiwidmlldy1wcm9maWxlIl19fSwic2NvcGUiOiJvcGVuaWQgYmNzZWNyZXQgcHJvZmlsZSBlbWFpbCIsImluc3RpdHV0aW9uIjoiYnNjIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJiY3NlY3JldCI6InpJTnNXcFNIT3FKSSIsIm5hbWUiOiJDaGFyYSBUc291a2FsYSIsInByZWZlcnJlZF91c2VybmFtZSI6Inh0c291a2FsYUBnbWFpbC5jb20iLCJnaXZlbl9uYW1lIjoiQ2hhcmEiLCJmYW1pbHlfbmFtZSI6IlRzb3VrYWxhIiwiZW1haWwiOiJ4dHNvdWthbGFAZ21haWwuY29tIn0.qCOKaF5Zq7_9JeRYZX4nFLRfI6YZ0STnwUstPTiAhYitxx1qLS8LSFIZREYPrxosGqOqFBS15riScI8GZfoHCg" 
-"transaction": { "type": "query", "transaction": {"chaincodeid": "dt4hCC", "channelid": "dt4h", "function": "GetUserHistory", "args": ["kkech@athenarc.gr"]}}}'
+# Orchestrator: GetMyHistory (no args) or WhoAmI
+curl "https://localhost:7000/executeTransaction" \
+  -H "Content-Type: application/json" \
+  -d '{"accessToken":"","transaction":{"type":"query","transaction":{"chaincodeid":"dt4hCC","channelid":"dt4h","function":"GetMyHistory","args":[]}}}'

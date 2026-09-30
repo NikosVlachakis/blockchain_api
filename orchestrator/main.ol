@@ -22,8 +22,8 @@ type TransactionRequest {
         transaction {
             chaincodeid: string( enum(["dt4hCC"]) )
             channelid: string( enum(["dt4h"]) )
-            function: string( enum(["LogQuery", "GetUserHistory"]) )
-            args[1, *]: string
+            function: string( enum(["LogQuery", "GetUserHistory", "GetMyHistory", "WhoAmI", "PrivacyBudgetContract:WhoAmI"]) )
+            args[0, *]: string
         }
     }
 }
