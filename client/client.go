@@ -1,6 +1,7 @@
 package client
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -65,6 +66,28 @@ func getSessionStore() *sessions.CookieStore {
 	return store
 }
 
+const gatewaySessionKey = "fabricGatewayKey"
+
+func gatewayKeyFromSession(session *sessions.Session) (string, bool) {
+	key, ok := session.Values[gatewaySessionKey].(string)
+	return key, ok && key != ""
+}
+
+func ensureGatewaySessionKey(session *sessions.Session) string {
+	if key, ok := gatewayKeyFromSession(session); ok {
+		return key
+	}
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		key := fmt.Sprintf("gw-%d", len(session.Values)+1)
+		session.Values[gatewaySessionKey] = key
+		return key
+	}
+	key := hex.EncodeToString(b[:])
+	session.Values[gatewaySessionKey] = key
+	return key
+}
+
 // Initialize the setup for the organization and store in session map.
 func InitializeWithSession(clientRequestBody ClientRequestBody, session *sessions.Session, w http.ResponseWriter, r *http.Request) error {
 
@@ -72,8 +95,12 @@ func InitializeWithSession(clientRequestBody ClientRequestBody, session *session
 	if err != nil {
 		return err
 	}
-	// Use the gorilla session ID as the key
-	orgGatewaysSessions.Store(session.ID, gateway)
+	// CookieStore leaves session.ID empty; key gateways via a value stored in the cookie.
+	key := ensureGatewaySessionKey(session)
+	if old, ok := GetGateway(key); ok && old != gateway {
+		_ = old.Close()
+	}
+	orgGatewaysSessions.Store(key, gateway)
 	session.Options = &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
@@ -86,8 +113,12 @@ func InitializeWithSession(clientRequestBody ClientRequestBody, session *session
 func InvokeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("Received Invoke request")
 	session, _ := getSessionStore().Get(r, "fabric-session")
-	gateway, ok := GetGateway(session.ID)
-
+	key, ok := gatewayKeyFromSession(session)
+	if !ok {
+		http.Error(w, "Fabric client not initialized for this session. Call /client/ first.", http.StatusBadRequest)
+		return
+	}
+	gateway, ok := GetGateway(key)
 	if !ok {
 		http.Error(w, "Fabric client not initialized for this session. Call /client/ first.", http.StatusBadRequest)
 		return
@@ -114,7 +145,12 @@ func QueryHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		session, _ := getSessionStore().Get(r, "fabric-session")
-		gateway, ok := GetGateway(session.ID)
+		key, ok := gatewayKeyFromSession(session)
+		if !ok {
+			http.Error(w, "Fabric client not initialized for this session. Call /client/ first.", http.StatusBadRequest)
+			return
+		}
+		gateway, ok := GetGateway(key)
 		if !ok {
 			http.Error(w, "Fabric client not initialized for this session. Call /client/ first.", http.StatusBadRequest)
 			return
@@ -151,7 +187,12 @@ func ClientHandler(w http.ResponseWriter, r *http.Request) {
 // Handler for /client/close
 func CloseHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := getSessionStore().Get(r, "fabric-session")
-	gateway, ok := GetGateway(session.ID)
+	key, ok := gatewayKeyFromSession(session)
+	if !ok {
+		http.Error(w, "No active Fabric client connection for this session.", http.StatusBadRequest)
+		return
+	}
+	gateway, ok := GetGateway(key)
 	if !ok {
 		http.Error(w, "No active Fabric client connection for this session.", http.StatusBadRequest)
 		return
@@ -161,7 +202,8 @@ func CloseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error closing Fabric client connection: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	RemoveGateway(session.ID)
+	RemoveGateway(key)
+	delete(session.Values, gatewaySessionKey)
 	session.Options.MaxAge = -1 // Invalidate session cookie
 	session.Save(r, w)
 	w.WriteHeader(http.StatusOK)

@@ -140,20 +140,25 @@ func newIdentity(enrollmentID string, userSecret []byte) (*identity.X509Identity
 	return id, nil
 }
 
-func parseECPrivateKey(privateKeyPEM []byte) (crypto.PrivateKey, error) {
-	// Step 1: Decode PEM block
+func parsePrivateKeyPEM(privateKeyPEM []byte) (crypto.PrivateKey, error) {
+	// Prefer fabric-gateway helper (SEC1 EC + PKCS8).
+	if key, err := identity.PrivateKeyFromPEM(privateKeyPEM); err == nil {
+		return key, nil
+	}
+
 	block, _ := pem.Decode(privateKeyPEM)
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM block")
 	}
 
-	// Step 2: Parse EC private key from DER bytes
-	privateKey, err := x509.ParseECPrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse EC private key: %w", err)
+	if key, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+		return key, nil
 	}
-
-	return privateKey, nil
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key (EC/PKCS8): %w", err)
+	}
+	return key, nil
 }
 
 // newSign creates a function that generates a digital signature from a message digest using a private key.
@@ -169,7 +174,7 @@ func newSign(enrollmentID string, userSecret []byte) (identity.Sign, error) {
 			return nil, fmt.Errorf("failed to get key from keystore: %w", err)
 		}
 
-		privateKey, err = parseECPrivateKey(privateKeyPEM)
+		privateKey, err = parsePrivateKeyPEM(privateKeyPEM)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse private key PEM: %w", err)
 		}

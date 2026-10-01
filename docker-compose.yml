@@ -30,6 +30,19 @@ services:
       TLS_CA_URL: "${TEST_TLS_CA_URL}"
       FABRIC_CA_SKIP_TLS: "true"
       TLS_CA_SKIP_TLS: "true"
+      AUTO_PROVISION_BUDGET: "${AUTO_PROVISION_BUDGET:-true}"
+      BUDGET_ADMIN_ID: "${BUDGET_ADMIN_ID:-admin0}"
+      BUDGET_ADMIN_SECRET: "${BUDGET_ADMIN_SECRET:-test123}"
+      SEED_DATASETS: "${SEED_DATASETS:-test-dataset}"
+      SEED_QUERY_COST: "${SEED_QUERY_COST:-0.1}"
+      SEED_EPSILON: "${SEED_EPSILON:-10.0}"
+      CHANNEL_ID: "${CHANNEL_ID:-dt4h}"
+      CHAINCODE_ID: "${CHAINCODE_ID:-dt4hCC}"
+      BSC_REG_USERNAME: "${BSC_REG_USERNAME}"
+      BSC_REG_PASSWORD: "${BSC_REG_PASSWORD}"
+      BSC_TEST_USER: "${BSC_TEST_USER}"
+      BSC_TEST_PWD: "${BSC_TEST_PWD}"
+      BLOCKCHAIN_API_URL: "http://localhost:3000"
     volumes:
       - type: bind
         source: ./identities
@@ -67,6 +80,19 @@ services:
       TLS_CA_URL: "${TEST_TLS_CA_URL}"
       FABRIC_CA_SKIP_TLS: "true"
       TLS_CA_SKIP_TLS: "true"
+      AUTO_PROVISION_BUDGET: "${AUTO_PROVISION_BUDGET:-true}"
+      BUDGET_ADMIN_ID: "${BUDGET_ADMIN_ID:-admin0}"
+      BUDGET_ADMIN_SECRET: "${BUDGET_ADMIN_SECRET:-test123}"
+      SEED_DATASETS: "${SEED_DATASETS:-test-dataset}"
+      SEED_QUERY_COST: "${SEED_QUERY_COST:-0.1}"
+      SEED_EPSILON: "${SEED_EPSILON:-10.0}"
+      CHANNEL_ID: "${CHANNEL_ID:-dt4h}"
+      CHAINCODE_ID: "${CHAINCODE_ID:-dt4hCC}"
+      BSC_REG_USERNAME: "${BSC_REG_USERNAME}"
+      BSC_REG_PASSWORD: "${BSC_REG_PASSWORD}"
+      BSC_TEST_USER: "${BSC_TEST_USER}"
+      BSC_TEST_PWD: "${BSC_TEST_PWD}"
+      BLOCKCHAIN_API_URL: "http://localhost:3000"
     volumes:
       - type: bind
         source: ./identities

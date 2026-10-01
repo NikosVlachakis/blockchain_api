@@ -14,8 +14,8 @@ RUN rm -f go.sum && \
     go mod edit -replace=github.com/consensys/gnark-crypto=github.com/consensys/gnark-crypto@v0.12.1 && \
     go mod edit -replace=github.com/IBM/mathlib=github.com/IBM/mathlib@v0.0.3-0.20231011094432-44ee0eb539da && \
     go mod tidy && \
-    go get github.com/consensys/bavard@latest && \
-    go get google.golang.org/genproto/googleapis/rpc/status@latest && \
+    go get github.com/consensys/bavard@v0.1.30 && \
+    go get google.golang.org/genproto/googleapis/rpc@v0.0.0-20250721164621-a45f3dfb1074 && \
     go mod download
 
 # Copy source code

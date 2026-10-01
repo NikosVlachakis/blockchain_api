@@ -22,8 +22,8 @@ go mod tidy
 # Download dependencies
 echo "⬇️ Downloading dependencies..."
 go mod download
-go get github.com/consensys/bavard@latest
-go get google.golang.org/genproto/googleapis/rpc/status@latest
+go get github.com/consensys/bavard@v0.1.30
+go get google.golang.org/genproto/googleapis/rpc@v0.0.0-20250721164621-a45f3dfb1074
 
 # Build the application
 echo "🏗️ Building application..."
